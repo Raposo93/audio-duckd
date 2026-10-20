@@ -1,0 +1,12 @@
+[Unit]
+Description=Duck Brave audio while Linphone is active
+After=pipewire-pulse.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/linphone-duck.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
