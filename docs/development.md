@@ -67,7 +67,8 @@ Con las dependencias de desarrollo instaladas, sin servidor de audio:
 
 Cubren entrada/salida de actividad, silencio/mute/corked, varios streams,
 reproducción/captura, cambios de volumen, desaparición/reutilización de índices,
-reintentos, exclusión de Linphone/Discord, configuración predeterminada,
+reintentos, parada por SIGINT/SIGTERM con backend simulado, fallos de restauración
+y cierre, exclusión de Linphone/Discord, configuración predeterminada,
 límites, selectores contradictorios y validación antes de conectar al backend. El adaptador se prueba con una API
 simulada; no sustituye una prueba de integración con un servidor real.
 

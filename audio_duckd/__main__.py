@@ -23,34 +23,51 @@ def main() -> int:
         parser.error(str(exc))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stopped = Event()
+    previous_handlers = {}
     for signum in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(signum, lambda *_: stopped.set())
+        previous_handlers[signum] = signal.signal(signum, lambda *_: stopped.set())
     backend = None
     policy = None
+    result = 0
     try:
         backend = PulseBackend(config)
         if args.inspect:
             print(json.dumps([asdict(s) for s in backend.streams()], indent=2))
-            return 0
-        policy = DuckingPolicy(backend, config)
-        logging.info("audio-duckd started; polling every 0.5 s")
-        while not stopped.is_set():
-            policy.refresh()
-            stopped.wait(0.5)
-        return 0
+        else:
+            policy = DuckingPolicy(backend, config)
+            logging.info("audio-duckd started; polling every 0.5 s")
+            while not stopped.is_set():
+                policy.refresh()
+                stopped.wait(0.5)
     except (BackendError, ImportError, OSError, RuntimeError) as exc:
         logging.error("Could not run audio-duckd: %s", exc)
-        return 1
+        result = 1
     finally:
-        if policy is not None:
-            try:
-                policy.refresh(restoring=True)
+        try:
+            if policy is not None:
+                try:
+                    policy.refresh(restoring=True)
+                except (BackendError, OSError, RuntimeError) as exc:
+                    logging.error("Could not restore target volumes on exit: %s", exc)
+                    result = 1
                 if policy.saved:
-                    logging.error("Some streams remain unrestored; check target application volumes")
-            except BackendError as exc:
-                logging.error("Could not restore target volumes on exit: %s", exc)
-        if backend is not None:
-            backend.close()
+                    logging.error(
+                        "Unrestored target identities=%s; check target application volumes",
+                        list(policy.saved),
+                    )
+                    result = 1
+        finally:
+            try:
+                if backend is not None:
+                    try:
+                        backend.close()
+                    except (BackendError, OSError, RuntimeError) as exc:
+                        logging.error("Could not close audio backend on exit: %s", exc)
+                        result = 1
+            finally:
+                for signum, handler in previous_handlers.items():
+                    signal.signal(signum, handler)
+    return result
 
 
 if __name__ == "__main__":

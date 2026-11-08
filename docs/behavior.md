@@ -29,6 +29,29 @@
   reconexión automática ni persistencia: SIGKILL, caída del servidor o del proceso
   pueden impedir restaurar el volumen. Comprobar Brave manualmente en esos casos.
 
+## Parada del daemon
+
+SIGINT (Ctrl+C) y SIGTERM solicitan detener el sondeo y despiertan su espera.
+La operación síncrona de audio en curso debe regresar antes de iniciar la limpieza;
+no hay tareas en segundo plano ni monitores de audio en esta versión. Se realiza
+una pasada de restauración de los originales guardados, incluso si Linphone sigue
+presente, antes de cerrar la conexión al backend. Las señales repetidas mantienen
+la petición de parada sin interrumpir esa limpieza.
+
+Solo se restauran identidades y números de canales que sigan coincidiendo. Un
+stream desaparecido se descarta; un fallo al escribir un stream no impide intentar
+los demás. Una restauración correcta elimina su original guardado, por lo que
+repetir la restauración no vuelve a escribirlo. Si falla la enumeración, se conservan
+los originales en memoria pero no se escribe a partir de información antigua.
+
+La salida es 0 cuando la ejecución y la limpieza terminan correctamente, o 1 ante
+errores del backend, cierre fallido u originales que no pudieron restaurarse. Los
+logs distinguen atenuación y restauración e incluyen la identidad del stream;
+al salir se enumeran las identidades pendientes. No hay reintentos adicionales de
+restauración al salir ni persistencia tras terminar el proceso. SIGKILL, una caída
+del proceso o un servidor inaccesible pueden impedir la limpieza: no se garantiza
+la recuperación en esos casos. Ver [diagnóstico y recuperación](operations.md#diagnóstico-y-recuperación).
+
 ## Dependencia y compatibilidad
 
 Se fija **pulsectl==24.12.0**, una interfaz síncrona de `libpulse` con listas de
