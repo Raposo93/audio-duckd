@@ -197,6 +197,33 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8, 0.6)))
         self.assertEqual(self.policy.saved, {})
 
+    def test_shutdown_restore_is_independent_retryable_and_idempotent(self):
+        second = stream(4, "brave", (0.1, 0.05))
+        vanished = stream(5, "brave", (0.3,))
+        backend = FakeBackend(self.brave, second, vanished, self.linphone)
+        policy = DuckingPolicy(backend)
+        policy.refresh()
+        write = backend.set_volume
+
+        def fail_first(target, volumes):
+            if target.identity == self.brave.identity:
+                raise BackendError("stream disappeared before write")
+            write(target, volumes)
+
+        # One stream disappears after enumeration; another before enumeration.
+        backend.items = [s for s in backend.items if s.identity != vanished.identity]
+        backend.set_volume = fail_first
+        policy.refresh(restoring=True)
+        self.assertEqual(policy.saved, {self.brave.identity: self.brave.volumes})
+        self.assertEqual(backend.writes[-1], ("brave", 4, second.volumes))
+        backend.set_volume = write
+        policy.refresh(restoring=True)
+        writes = list(backend.writes)
+        policy.refresh(restoring=True)
+        self.assertEqual(backend.writes, writes)
+        self.assertEqual(backend.items[0].volumes, self.brave.volumes)
+        self.assertEqual(policy.saved, {})
+
     def test_multiple_linphone_streams_require_last_stream_to_disappear(self):
         self.backend.items.extend([self.linphone, replace(self.linphone, index=8)])
         self.policy.refresh()

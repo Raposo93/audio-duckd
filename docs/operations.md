@@ -22,7 +22,10 @@ instancia del daemon para diagnosticar: utilizar ese modo de inspección.
 Los errores de configuración terminan con código 2; los fallos de conexión o
 enumeración terminan con código 1. Los fallos de escritura se registran y se
 reintentan durante el sondeo. Consultar las garantías y límites de restauración
-en [behavior.md](behavior.md). Si la restauración falla o el proceso termina
+en [behavior.md](behavior.md#parada-del-daemon). Una parada con originales pendientes
+o un fallo al cerrar el backend también termina con código 1. Buscar en los logs
+`Could not restore` y `Unrestored target identities` para identificar los streams
+afectados. Si la restauración falla o el proceso termina
 abrutamente, comprobar y ajustar manualmente el volumen de los objetivos.
 
 ## Comprobación real de Linphone y pipewire-pulse
@@ -52,6 +55,12 @@ prueba y guardar la salida JSON de este comando en cada etapa:
 | Cambiar manualmente Brave durante llamada | En aproximadamente 0,5 s debe volver al original × 0,2. |
 | Colgar, tanto local como remotamente | Registrar cuándo desaparece el último stream de Linphone y confirmar la restauración por canal. |
 | Ctrl+C o SIGTERM durante llamada | Brave debe restaurarse y Linphone/Discord conservar volumen y mute. |
+
+Repetir la etapa de parada por separado con Ctrl+C y SIGTERM, reiniciando el daemon
+y anotando de nuevo los originales antes de cada prueba. Comprobar el código de
+salida, la restauración de todos los streams supervivientes y el cierre del proceso;
+incluir un objetivo que desaparezca antes de la parada. Esta aceptación real sigue
+pendiente; las pruebas automáticas solo validan el flujo con un backend simulado.
 
 Si una etapa falla, guardar JSON antes/después, versiones y logs del daemon.
 **El ciclo de vida real de Linphone sigue sin verificar** hasta completar estas

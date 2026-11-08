@@ -16,11 +16,12 @@ class DuckingPolicy:
         self.config = config if config is not None else Config()
         self.saved: dict[tuple, tuple[float, ...]] = {}
 
-    def _write(self, stream: Stream, volumes: tuple[float, ...]) -> bool:
+    def _write(self, stream: Stream, volumes: tuple[float, ...], *, restoring: bool = False) -> bool:
         try:
             self.backend.set_volume(stream, volumes)
         except BackendError as exc:
-            log.warning("Could not change target id=%s: %s", stream.index, exc)
+            log.warning("Could not %s target identity=%s: %s",
+                        "restore" if restoring else "attenuate", stream.identity, exc)
             return False
         return True
 
@@ -47,8 +48,10 @@ class DuckingPolicy:
         else:
             for key, original in list(self.saved.items()):
                 if len(original) != len(targets[key].volumes):
-                    log.warning("Channel count changed for target id=%s", targets[key].index)
+                    log.warning("Could not restore target identity=%s: channel count changed "
+                                "(saved=%s, current=%s)", key, len(original),
+                                len(targets[key].volumes))
                     continue
-                if self._write(targets[key], original):
+                if self._write(targets[key], original, restoring=True):
                     log.info("Restored target id=%s", targets[key].index)
                     del self.saved[key]
