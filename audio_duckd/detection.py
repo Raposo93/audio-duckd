@@ -1,11 +1,12 @@
-"""La presencia de streams aproxima el estado de llamada, sin medir señal."""
+"""Stream presence approximates call activity without measuring signal levels."""
 
 from .backend import Stream
+from .config import Config
 
 
-def linphone_active(streams: list[Stream]) -> bool:
-    return any(stream.binary == "linphone" for stream in streams)
+def linphone_active(streams: list[Stream], config: Config) -> bool:
+    return any(stream.binary in config.applications.linphone for stream in streams)
 
 
-def brave_playback(streams: list[Stream]) -> list[Stream]:
-    return [s for s in streams if s.direction == "playback" and s.binary == "brave"]
+def target_playback(streams: list[Stream], config: Config) -> list[Stream]:
+    return [s for s in streams if s.direction == "playback" and config.is_target(s.binary)]

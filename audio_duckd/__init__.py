@@ -1,1 +1,1 @@
-"""Ducking de Brave durante streams de Linphone."""
+"""Duck Brave audio while Linphone streams exist."""

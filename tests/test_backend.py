@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock
 
 from audio_duckd.backend import BackendError, PulseBackend
+from audio_duckd.config import Applications, Config
 
 
 def info(binary="brave", index=1):
@@ -16,6 +17,7 @@ def info(binary="brave", index=1):
 class BackendTests(unittest.TestCase):
     def setUp(self):
         self.backend = PulseBackend.__new__(PulseBackend)
+        self.backend.config = Config()
         self.backend.api = SimpleNamespace(PulseError=RuntimeError, PulseVolumeInfo=list)
         self.backend.pulse = Mock()
         self.backend.pulse.sink_input_list.return_value = [info()]
@@ -42,6 +44,14 @@ class BackendTests(unittest.TestCase):
         with self.assertRaises(BackendError):
             self.backend.set_volume(playback, (0.2, 0.2))
         self.backend.pulse.sink_input_volume_set.assert_not_called()
+
+    def test_configured_target_can_be_written(self):
+        self.backend.config = Config(applications=Applications(targets=("firefox",)))
+        self.backend.pulse.sink_input_info.return_value = info("firefox")
+        self.backend.set_volume(self.backend._stream(info("firefox"), "playback"), (0.1, 0.1))
+        self.backend.pulse.sink_input_volume_set.assert_called_once_with(1, [0.1, 0.1])
+        with self.assertRaises(BackendError):
+            self.backend.set_volume(self.backend._stream(info(), "playback"), (0.1, 0.1))
 
     def test_non_brave_and_capture_writes_are_rejected(self):
         for binary, direction in [("Discord", "playback"), ("linphone", "playback"),
