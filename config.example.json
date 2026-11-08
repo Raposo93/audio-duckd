@@ -1,0 +1,15 @@
+{
+  "applications": {
+    "linphone": ["linphone"],
+    "discord": ["Discord"],
+    "targets": ["brave"]
+  },
+  "attenuation_factor": 0.2,
+  "discord": {
+    "activation_threshold_dbfs": -40.0,
+    "deactivation_threshold_dbfs": -45.0,
+    "attack_seconds": 0.15,
+    "release_seconds": 0.8,
+    "sample_interval_seconds": 0.05
+  }
+}

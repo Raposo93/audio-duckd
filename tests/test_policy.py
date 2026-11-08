@@ -3,6 +3,7 @@ import unittest
 
 from audio_duckd.backend import BackendError, Stream
 from audio_duckd.policy import DuckingPolicy
+from audio_duckd.config import Applications, Config
 
 
 def stream(index, binary, volumes=(0.8, 0.6), **kwargs):
@@ -20,7 +21,7 @@ class FakeBackend:
 
     def set_volume(self, target, volumes):
         if self.fail:
-            raise BackendError("fallo simulado")
+            raise BackendError("simulated failure")
         self.writes.append((target.binary, target.index, volumes))
         self.items = [replace(s, volumes=volumes) if s.identity == target.identity else s
                       for s in self.items]
@@ -34,13 +35,45 @@ class PolicyTests(unittest.TestCase):
         self.backend = FakeBackend(self.brave, self.discord)
         self.policy = DuckingPolicy(self.backend)
 
+    def test_custom_selectors_and_multiple_targets(self):
+        config = Config(applications=Applications(
+            linphone=("phone",), discord=("chat",), targets=("music", "browser")),
+            attenuation_factor=0.5)
+        backend = FakeBackend(stream(1, "music"), stream(2, "browser"),
+                              stream(3, "phone"), stream(4, "chat"), stream(5, "brave"))
+        policy = DuckingPolicy(backend, config)
+        policy.refresh()
+        self.assertEqual(backend.writes, [("music", 1, (0.4, 0.3)),
+                                          ("browser", 2, (0.4, 0.3))])
+        policy.refresh(restoring=True)
+        self.assertEqual(backend.items[0].volumes, (0.8, 0.6))
+
+    def test_factor_limits_low_volume_and_no_compounding(self):
+        for factor in (0, 0.2, 1):
+            with self.subTest(factor=factor):
+                backend = FakeBackend(stream(1, "brave", (0.1, 0.05)), self.linphone)
+                policy = DuckingPolicy(backend, Config(attenuation_factor=factor))
+                policy.refresh()
+                policy.refresh()
+                self.assertEqual(backend.items[0].volumes, (0.1 * factor, 0.05 * factor))
+                policy.refresh(restoring=True)
+                self.assertEqual(backend.items[0].volumes, (0.1, 0.05))
+
+    def test_channel_count_change_does_not_apply_a_partial_comparison(self):
+        self.backend.items.append(self.linphone)
+        self.policy.refresh()
+        self.backend.items[0] = replace(self.backend.items[0], volumes=(0.8 * 0.2,))
+        self.policy.refresh()
+        self.assertEqual(len(self.backend.writes), 1)
+        self.assertEqual(self.policy.saved[self.brave.identity], self.brave.volumes)
+
     def test_enter_hold_and_leave_activity_restores_each_channel(self):
         self.policy.refresh()
         self.assertEqual(self.backend.writes, [])
         self.backend.items.append(self.linphone)
         self.policy.refresh()
         self.policy.refresh()
-        self.assertEqual(self.backend.writes, [("brave", 1, (0.2, 0.2))])
+        self.assertEqual(self.backend.writes, [("brave", 1, (0.8 * 0.2, 0.6 * 0.2))])
         self.backend.items = [s for s in self.backend.items if s.binary != "linphone"]
         self.policy.refresh()
         self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8, 0.6)))
@@ -54,7 +87,7 @@ class PolicyTests(unittest.TestCase):
         self.policy.refresh()
         self.backend.items[-1] = replace(capture, mute=True, corked=True)
         self.policy.refresh()
-        self.assertEqual(self.backend.writes, [("brave", 1, (0.2, 0.2))])
+        self.assertEqual(self.backend.writes, [("brave", 1, (0.8 * 0.2, 0.6 * 0.2))])
         self.assertTrue(self.policy.saved)
 
     def test_discord_and_linphone_are_never_written(self):
@@ -80,7 +113,7 @@ class PolicyTests(unittest.TestCase):
         self.policy.refresh()
         self.backend.items[0] = replace(self.brave, volumes=(0.9, 0.9))
         self.policy.refresh()
-        self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.2, 0.2)))
+        self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8 * 0.2, 0.6 * 0.2)))
         self.policy.refresh(restoring=True)
         self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8, 0.6)))
 
@@ -114,7 +147,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.policy.saved, {})
         self.backend.fail = False
         self.policy.refresh()
-        self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.2, 0.2)))
+        self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8 * 0.2, 0.6 * 0.2)))
 
     def test_failed_restore_is_retried(self):
         self.backend.items.append(self.linphone)

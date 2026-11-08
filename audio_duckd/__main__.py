@@ -1,4 +1,4 @@
-"""Arranque manual: python -m audio_duckd."""
+"""Manual entry point: python -m audio_duckd."""
 
 import argparse
 from dataclasses import asdict
@@ -9,12 +9,18 @@ from threading import Event
 
 from .backend import BackendError, PulseBackend
 from .policy import DuckingPolicy
+from .config import ConfigError, load_config
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Baja Brave al 20 % mientras exista Linphone")
-    parser.add_argument("--inspect", action="store_true", help="Imprime streams como JSON sin modificar audio")
+    parser = argparse.ArgumentParser(description="Attenuate target applications while Linphone streams exist")
+    parser.add_argument("--inspect", action="store_true", help="Print streams as JSON without modifying audio")
+    parser.add_argument("--config", metavar="FILE", help="JSON configuration file")
     args = parser.parse_args()
+    try:
+        config = load_config(args.config)
+    except ConfigError as exc:
+        parser.error(str(exc))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stopped = Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
@@ -22,27 +28,27 @@ def main() -> int:
     backend = None
     policy = None
     try:
-        backend = PulseBackend()
+        backend = PulseBackend(config)
         if args.inspect:
             print(json.dumps([asdict(s) for s in backend.streams()], indent=2))
             return 0
-        policy = DuckingPolicy(backend)
-        logging.info("audio-duckd iniciado; sondeo cada 0,5 s")
+        policy = DuckingPolicy(backend, config)
+        logging.info("audio-duckd started; polling every 0.5 s")
         while not stopped.is_set():
             policy.refresh()
             stopped.wait(0.5)
         return 0
     except (BackendError, ImportError, OSError, RuntimeError) as exc:
-        logging.error("No se pudo ejecutar audio-duckd: %s", exc)
+        logging.error("Could not run audio-duckd: %s", exc)
         return 1
     finally:
         if policy is not None:
             try:
                 policy.refresh(restoring=True)
                 if policy.saved:
-                    logging.error("Quedan streams sin restaurar; comprueba el volumen de Brave")
+                    logging.error("Some streams remain unrestored; check target application volumes")
             except BackendError as exc:
-                logging.error("No se pudo restaurar Brave al salir: %s", exc)
+                logging.error("Could not restore target volumes on exit: %s", exc)
         if backend is not None:
             backend.close()
 

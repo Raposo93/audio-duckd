@@ -1,7 +1,9 @@
-"""Acceso estructurado a PulseAudio y pipewire-pulse mediante libpulse."""
+"""Structured access to PulseAudio and pipewire-pulse through libpulse."""
 
 from dataclasses import dataclass
 from typing import Protocol
+
+from .config import Config
 
 
 class BackendError(RuntimeError):
@@ -31,8 +33,9 @@ class AudioBackend(Protocol):
 
 
 class PulseBackend:
-    def __init__(self):
-        # La política y sus pruebas no necesitan cargar libpulse.
+    def __init__(self, config: Config | None = None):
+        self.config = config if config is not None else Config()
+        # The policy and its tests do not need to load libpulse.
         import pulsectl
 
         self.api = pulsectl
@@ -60,13 +63,13 @@ class PulseBackend:
             raise BackendError(str(exc)) from exc
 
     def set_volume(self, stream: Stream, volumes: tuple[float, ...]) -> None:
-        if stream.direction != "playback" or stream.binary != "brave":
-            raise BackendError("Solo se permite modificar streams de reproducción de Brave")
+        if stream.direction != "playback" or not self.config.is_target(stream.binary):
+            raise BackendError("Only target application playback streams may be modified")
         try:
-            # Comprobar que el índice sigue perteneciendo al mismo stream.
+            # Check that the index still belongs to the same stream.
             current = self._stream(self.pulse.sink_input_info(stream.index), "playback")
             if current.identity != stream.identity or len(current.volumes) != len(volumes):
-                raise BackendError("El stream ha cambiado antes de escribir el volumen")
+                raise BackendError("The stream changed before the volume write")
             self.pulse.sink_input_volume_set(
                 stream.index, self.api.PulseVolumeInfo(list(volumes))
             )
