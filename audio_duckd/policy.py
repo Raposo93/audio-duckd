@@ -46,6 +46,9 @@ class DuckingPolicy:
                     self.saved[key] = original
         else:
             for key, original in list(self.saved.items()):
+                if len(original) != len(targets[key].volumes):
+                    log.warning("Channel count changed for target id=%s", targets[key].index)
+                    continue
                 if self._write(targets[key], original):
                     log.info("Restored target id=%s", targets[key].index)
                     del self.saved[key]

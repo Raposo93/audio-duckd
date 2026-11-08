@@ -79,6 +79,42 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8, 0.6)))
         self.assertEqual(self.policy.saved, {})
 
+    def test_channel_count_change_blocks_restore_until_original_layout_returns(self):
+        for restoring in (False, True):
+            with self.subTest(restoring=restoring):
+                backend = FakeBackend(self.brave, self.linphone)
+                policy = DuckingPolicy(backend)
+                policy.refresh()
+                backend.items = [replace(self.brave, volumes=(0.1,))]
+                policy.refresh(restoring=restoring)
+                self.assertEqual(len(backend.writes), 1)
+                self.assertEqual(backend.items[0].volumes, (0.1,))
+                backend.items[0] = replace(self.brave, volumes=(0.1, 0.1))
+                policy.refresh(restoring=restoring)
+                self.assertEqual(backend.items[0].volumes, self.brave.volumes)
+                self.assertEqual(policy.saved, {})
+
+    def test_each_surviving_stream_restores_independently_and_keeps_current_mute(self):
+        first = replace(self.brave, mute=True)
+        second = stream(4, "brave", (0.1, 0.05))
+        vanished = stream(5, "brave", (0.3,))
+        backend = FakeBackend(first, second, vanished, self.linphone)
+        policy = DuckingPolicy(backend)
+        policy.refresh()
+        self.assertEqual([s.volumes for s in backend.items[:3]],
+                         [(0.8 * 0.2, 0.6 * 0.2), (0.1 * 0.2, 0.05 * 0.2), (0.3 * 0.2,)])
+        self.assertTrue(backend.items[0].mute)
+        self.assertFalse(backend.items[1].mute)
+        # Manual mute changes must survive restoration too.
+        backend.items = [replace(backend.items[0], mute=False),
+                         replace(backend.items[1], mute=True)]
+        policy.refresh()
+        self.assertEqual(backend.writes[-2:], [("brave", 1, first.volumes),
+                                               ("brave", 4, second.volumes)])
+        self.assertFalse(backend.items[0].mute)
+        self.assertTrue(backend.items[1].mute)
+        self.assertEqual(policy.saved, {})
+
     def test_silence_and_microphone_mute_do_not_end_activity(self):
         capture = replace(self.linphone, direction="capture")
         self.backend.items.append(capture)
