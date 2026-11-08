@@ -53,6 +53,29 @@ class BackendTests(unittest.TestCase):
         with self.assertRaises(BackendError):
             self.backend.set_volume(self.backend._stream(info(), "playback"), (0.1, 0.1))
 
+    def test_reused_target_index_is_rechecked_before_writing(self):
+        for changed_field in ("client", "process_id"):
+            with self.subTest(changed_field=changed_field):
+                playback = self.backend.streams()[0]
+                current = info()
+                if changed_field == "client":
+                    current.client = 99
+                else:
+                    current.proplist["application.process.id"] = "99"
+                self.backend.pulse.sink_input_info.return_value = current
+                with self.assertRaises(BackendError):
+                    self.backend.set_volume(playback, (0.14, 0.1))
+        self.backend.pulse.sink_input_volume_set.assert_not_called()
+
+    def test_channel_count_is_rechecked_before_writing(self):
+        playback = self.backend.streams()[0]
+        current = info()
+        current.volume.values = [0.7]
+        self.backend.pulse.sink_input_info.return_value = current
+        with self.assertRaises(BackendError):
+            self.backend.set_volume(playback, (0.14, 0.1))
+        self.backend.pulse.sink_input_volume_set.assert_not_called()
+
     def test_non_brave_and_capture_writes_are_rejected(self):
         for binary, direction in [("Discord", "playback"), ("linphone", "playback"),
                                   ("brave", "capture")]:

@@ -19,6 +19,11 @@
   guardado a un stream nuevo. La identidad incluye dirección, índice, cliente,
   PID y binario; antes de escribir se vuelve a comprobar. La API no proporciona
   una escritura condicional atómica frente a desapariciones concurrentes.
+- Si cambia el número de canales de un objetivo con original guardado, no se
+  escribe ni atenuación ni restauración hasta que vuelva a coincidir. Se conserva
+  el original para reintentar; si el stream desaparece, se descarta. No se adapta
+  un volumen guardado a otro número de canales. El mute actual se conserva,
+  incluidos los cambios manuales durante el ducking.
 - Los fallos de escritura se registran y reintentan en el siguiente sondeo. Un
   fallo al enumerar/conectar termina con código 1 e intenta restaurar. No hay
   reconexión automática ni persistencia: SIGKILL, caída del servidor o del proceso
