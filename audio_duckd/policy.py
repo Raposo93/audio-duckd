@@ -3,7 +3,7 @@
 import logging
 from math import isclose
 
-from .backend import AudioBackend, BackendError, Stream
+from .backend import AudioBackend, BackendDisconnected, BackendError, Stream
 from .config import Config
 from .detection import target_playback, linphone_active
 
@@ -11,14 +11,18 @@ log = logging.getLogger(__name__)
 
 
 class DuckingPolicy:
-    def __init__(self, backend: AudioBackend, config: Config | None = None):
+    def __init__(self, backend: AudioBackend, config: Config | None = None,
+                 *, writes_suspended: bool = False):
         self.backend = backend
         self.config = config if config is not None else Config()
         self.saved: dict[tuple, tuple[float, ...]] = {}
+        self.writes_suspended = writes_suspended
 
     def _write(self, stream: Stream, volumes: tuple[float, ...], *, restoring: bool = False) -> bool:
         try:
             self.backend.set_volume(stream, volumes)
+        except BackendDisconnected:
+            raise
         except BackendError as exc:
             log.warning("Could not %s target identity=%s: %s",
                         "restore" if restoring else "attenuate", stream.identity, exc)
@@ -31,6 +35,8 @@ class DuckingPolicy:
         # Do not transfer a disappeared stream volume to a new stream.
         self.saved = {key: value for key, value in self.saved.items() if key in targets}
         active = not restoring and linphone_active(streams, self.config)
+        if self.writes_suspended:
+            return
         if active:
             for key, stream in targets.items():
                 original = self.saved.get(key, stream.volumes)
@@ -40,7 +46,13 @@ class DuckingPolicy:
                     continue
                 equal = all(isclose(v, target, abs_tol=1 / 65536)
                             for v, target in zip(stream.volumes, desired))
-                if equal or self._write(stream, desired):
+                try:
+                    changed = equal or self._write(stream, desired)
+                except BackendDisconnected:
+                    # The server may have applied the write before the connection failed.
+                    self.saved[key] = original
+                    raise
+                if changed:
                     if key not in self.saved:
                         log.info("Linphone active: target id=%s, factor=%s",
                                  stream.index, self.config.attenuation_factor)
