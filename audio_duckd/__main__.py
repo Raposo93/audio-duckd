@@ -7,7 +7,7 @@ import logging
 import signal
 from threading import Event
 
-from .backend import BackendError, PulseBackend
+from .backend import BackendDisconnected, BackendError, PulseBackend
 from .policy import DuckingPolicy
 from .config import ConfigError, load_config
 
@@ -29,15 +29,45 @@ def main() -> int:
     backend = None
     policy = None
     result = 0
+    writes_suspended = False
     try:
-        backend = PulseBackend(config)
         if args.inspect:
+            backend = PulseBackend(config)
             print(json.dumps([asdict(s) for s in backend.streams()], indent=2))
         else:
-            policy = DuckingPolicy(backend, config)
             logging.info("audio-duckd started; polling every 0.5 s")
+            retry_delay = 0.5
             while not stopped.is_set():
-                policy.refresh()
+                try:
+                    if backend is None:
+                        backend = PulseBackend(config)
+                        policy = DuckingPolicy(backend, config, writes_suspended=writes_suspended)
+                        logging.info("Audio server connected; starting a new stream session")
+                    if stopped.is_set():
+                        break
+                    policy.refresh()
+                except BackendDisconnected as exc:
+                    if policy is not None and policy.saved:
+                        writes_suspended = True
+                        result = 1
+                        logging.error(
+                            "Volume writes suspended after disconnect; unrestored target "
+                            "identities=%s; check target application volumes and restart the daemon",
+                            list(policy.saved),
+                        )
+                    policy = None
+                    if backend is not None:
+                        try:
+                            backend.close()
+                        except (BackendError, OSError, RuntimeError) as close_exc:
+                            logging.error("Could not close disconnected audio backend: %s", close_exc)
+                            result = 1
+                        backend = None
+                    logging.warning("Audio server unavailable: %s; retrying in %s s", exc, retry_delay)
+                    stopped.wait(retry_delay)
+                    retry_delay = min(retry_delay * 2, 5.0)
+                    continue
+                retry_delay = 0.5
                 stopped.wait(0.5)
     except (BackendError, ImportError, OSError, RuntimeError) as exc:
         logging.error("Could not run audio-duckd: %s", exc)

@@ -26,6 +26,9 @@ En Debian/Ubuntu puede ser necesario instalar `python3-venv` para crear el entor
 También se puede usar `uv venv` seguido de `uv pip install -r requirements.txt`.
 Alternativa de ejecución: `.venv/bin/python linphone-duck.py`.
 Ctrl+C y SIGTERM intentan restaurar Brave antes de salir.
+Si se pierde la conexión al servidor de audio, consultar la
+[reconexión y suspensión de escrituras](docs/behavior.md#reconexión) antes de reiniciar
+el daemon: puede ser necesario corregir manualmente los volúmenes.
 
 ## Configuración
 

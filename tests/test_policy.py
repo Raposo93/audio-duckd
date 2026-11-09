@@ -1,7 +1,7 @@
 from dataclasses import replace
 import unittest
 
-from audio_duckd.backend import BackendError, Stream
+from audio_duckd.backend import BackendDisconnected, BackendError, Stream
 from audio_duckd.policy import DuckingPolicy
 from audio_duckd.config import Applications, Config
 
@@ -196,6 +196,17 @@ class PolicyTests(unittest.TestCase):
         self.policy.refresh()
         self.assertEqual(self.backend.writes[-1], ("brave", 1, (0.8, 0.6)))
         self.assertEqual(self.policy.saved, {})
+
+    def test_disconnect_during_write_keeps_original_and_stops_other_writes(self):
+        self.backend.items.extend([self.linphone, stream(4, "brave")])
+
+        def disconnect(target, volumes):
+            raise BackendDisconnected("write acknowledgement lost")
+
+        self.backend.set_volume = disconnect
+        with self.assertRaises(BackendDisconnected):
+            self.policy.refresh()
+        self.assertEqual(self.policy.saved, {self.brave.identity: self.brave.volumes})
 
     def test_shutdown_restore_is_independent_retryable_and_idempotent(self):
         second = stream(4, "brave", (0.1, 0.05))

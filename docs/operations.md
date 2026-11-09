@@ -19,14 +19,52 @@ dos instancias simultáneas.
 `--inspect` enumera streams sin escribir volumen ni mute. No arrancar una segunda
 instancia del daemon para diagnosticar: utilizar ese modo de inspección.
 
-Los errores de configuración terminan con código 2; los fallos de conexión o
-enumeración terminan con código 1. Los fallos de escritura se registran y se
-reintentan durante el sondeo. Consultar las garantías y límites de restauración
+Los errores de configuración terminan con código 2. El daemon reintenta conexiones
+fallidas; `--inspect` termina con código 1 ante fallos de conexión o enumeración.
+Un fallo de enumeración con conexión activa termina el daemon con código 1. Los
+fallos de escritura de un stream se registran y se reintentan durante el sondeo.
+Consultar el [contrato de reconexión](behavior.md#reconexión) y las garantías de restauración
 en [behavior.md](behavior.md#parada-del-daemon). Una parada con originales pendientes
 o un fallo al cerrar el backend también termina con código 1. Buscar en los logs
 `Could not restore` y `Unrestored target identities` para identificar los streams
 afectados. Si la restauración falla o el proceso termina
 abrutamente, comprobar y ajustar manualmente el volumen de los objetivos.
+
+`Audio server unavailable` indica un intento de reconexión, y
+`starting a new stream session` indica que se ha creado una conexión nueva. Si se
+registra `Volume writes suspended after disconnect`, el daemon sigue enumerando
+pero no escribe volúmenes hasta reiniciarlo. Ni terminar la llamada ni otra
+reconexión eliminan esa suspensión. Comprobar y corregir manualmente los volúmenes
+de todos los objetivos antes de reiniciar el daemon: el servidor o la aplicación
+pueden haber conservado el volumen reducido. No aplicar el factor inverso de forma
+automática. La suspensión implica salida con código 1 al detenerlo, aunque la
+conexión ya se haya recuperado.
+
+## Comprobación real de reconexión
+
+Pendiente de ejecutar en la sesión de usuario con `pipewire-pulse`. Esta prueba
+interrumpe el audio y queda fuera de `./check.sh`. Registrar versiones, configuración,
+commit, volúmenes por canal y logs según el registro de resultados de este documento.
+
+1. Con Linphone sin streams y Brave reproduciendo, iniciar una sola instancia del
+   daemon y guardar `--inspect`.
+2. Reiniciar manualmente `pipewire-pulse` con
+   `systemctl --user restart pipewire-pulse.service`; comprobar la espera entre
+   intentos y la conexión nueva sin reiniciar el daemon.
+3. Guardar otra inspección: los índices pueden reutilizarse. Iniciar la llamada de
+   prueba y comprobar que cada objetivo usa sus volúmenes de la sesión nueva,
+   conserva el balance y restaura esos valores al terminar la llamada.
+4. Repetir la interrupción durante ducking. Comprobar el mensaje de suspensión y
+   las identidades pendientes, la reconexión y la ausencia de nuevas escrituras,
+   tanto durante la llamada como después de terminarla o abrir otro objetivo.
+   Detener el daemon (código 1), comprobar/corregir manualmente los volúmenes y
+   reiniciarlo; verificar una nueva atenuación y restauración sobre esa base.
+5. Comprobar por separado Ctrl+C y SIGTERM durante los reintentos, sin que se inicie
+   otro intento tras la petición de parada. Confirmar que Linphone y Discord
+   conservan sus volúmenes y mute en todas las etapas.
+
+Registrar resultados correctos, fallidos y no ejecutados. Las pruebas simuladas no
+establecen si las aplicaciones conservan sus volúmenes tras el reinicio real.
 
 ## Comprobación real de Linphone y pipewire-pulse
 

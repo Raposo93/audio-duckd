@@ -25,7 +25,7 @@ existentes. No es necesario reescribirlas para ejecutar la suite con pytest.
 
 | Módulo | Responsabilidad |
 | --- | --- |
-| `audio_duckd/__main__.py` | Argumentos, configuración, señales, sondeo y cierre. |
+| `audio_duckd/__main__.py` | Argumentos, configuración, señales, sondeo, reconexión y cierre. |
 | `audio_duckd/config.py` | Configuración y validación sin acceso al audio. |
 | `audio_duckd/backend.py` | Adaptador de libpulse, representación de streams y guardas de escritura. |
 | `audio_duckd/detection.py` | Identificación de actividad y objetivos a partir de streams. |
@@ -71,6 +71,15 @@ reintentos, parada por SIGINT/SIGTERM con backend simulado, fallos de restauraci
 y cierre, exclusión de Linphone/Discord, configuración predeterminada,
 límites, selectores contradictorios y validación antes de conectar al backend. El adaptador se prueba con una API
 simulada; no sustituye una prueba de integración con un servidor real.
+
+La reconexión se prueba con sesiones simuladas, esperas deterministas, servidor
+ausente al arrancar, pérdida durante enumeración/escritura, índices reutilizados y
+suspensión de escrituras tras una interrupción con volúmenes en riesgo. El backend
+distingue desconexión de fallos de operaciones individuales; la política propaga
+la desconexión al coordinador. Cada conexión nueva es el límite para reinicializar
+los futuros monitores de Discord: deberán cerrarse antes de descartar el backend
+anterior y crearse de nuevo sobre el siguiente, sin compartir muestras ni identidades.
+No se añade todavía una API de monitores sin una implementación real.
 
 ## Criterio de validación
 
